@@ -1,0 +1,1389 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from google.colab import files
+
+from sklearn.model_selection import train_test_split
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
+
+from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LogisticRegression
+
+from sklearn.metrics import (
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score,
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
+    classification_report
+)
+
+sns.set_theme(style="whitegrid")
+pd.set_option("display.max_columns", None)
+pd.set_option("display.max_rows", 100)
+pd.set_option("display.precision", 4)
+
+uploaded = files.upload()
+file_name = list(uploaded.keys())[0]
+
+if file_name.lower().endswith(".csv"):
+    df = pd.read_csv(file_name)
+elif file_name.lower().endswith((".xlsx", ".xls")):
+    df = pd.read_excel(file_name)
+else:
+    raise ValueError("Please upload a CSV or Excel file.")
+
+df.columns = (
+    df.columns
+    .astype(str)
+    .str.strip()
+    .str.lower()
+    .str.replace(" ", "_")
+    .str.replace(r"[^a-z0-9_]", "", regex=True)
+)
+
+print("=" * 80)
+print("STUDENT PERFORMANCE DATASET")
+print("=" * 80)
+
+print("Rows:", df.shape[0])
+print("Columns:", df.shape[1])
+
+display(df.head())
+
+print("\nDATASET INFORMATION")
+print("=" * 80)
+df.info()
+
+print("\nMISSING VALUES")
+print("=" * 80)
+
+missing_df = pd.DataFrame({
+    "Missing_Count": df.isnull().sum(),
+    "Missing_Percentage": df.isnull().mean() * 100
+})
+
+display(
+    missing_df
+    .sort_values("Missing_Percentage", ascending=False)
+)
+
+print("\nDUPLICATE RECORDS")
+print("=" * 80)
+print("Duplicate rows:", df.duplicated().sum())
+
+df = df.drop_duplicates().reset_index(drop=True)
+
+print("Rows after duplicate removal:", len(df))
+
+print("\nDESCRIPTIVE STATISTICS")
+print("=" * 80)
+display(df.describe(include="all").T)
+
+print("\nDATA TYPES")
+print("=" * 80)
+display(
+    df.dtypes.to_frame("Data_Type")
+)
+
+numeric_columns = df.select_dtypes(
+    include=np.number
+).columns.tolist()
+
+categorical_columns = df.select_dtypes(
+    exclude=np.number
+).columns.tolist()
+
+print("\nNUMERICAL VARIABLES")
+print("=" * 80)
+print(numeric_columns)
+
+print("\nCATEGORICAL VARIABLES")
+print("=" * 80)
+print(categorical_columns)
+
+target = "exam_score"
+
+if target not in df.columns:
+
+    possible_targets = [
+        c for c in df.columns
+        if "exam" in c and "score" in c
+    ]
+
+    if len(possible_targets) > 0:
+        target = possible_targets[0]
+
+    else:
+        possible_targets = [
+            c for c in df.columns
+            if "score" in c
+        ]
+
+        if len(possible_targets) > 0:
+            target = possible_targets[0]
+
+if target not in df.columns:
+    raise ValueError(
+        "exam_score column was not found in the dataset."
+    )
+
+df[target] = pd.to_numeric(
+    df[target],
+    errors="coerce"
+)
+
+df = df.dropna(
+    subset=[target]
+).reset_index(drop=True)
+
+print("\nTarget variable:", target)
+
+print("\nNUMERICAL DISTRIBUTIONS")
+print("=" * 80)
+
+for col in numeric_columns:
+
+    if col not in df.columns:
+        continue
+
+    plt.figure(figsize=(9, 5))
+
+    sns.histplot(
+        df[col].dropna(),
+        kde=True,
+        bins=30
+    )
+
+    plt.title(
+        f"Distribution of {col}",
+        fontsize=15,
+        fontweight="bold"
+    )
+
+    plt.xlabel(col)
+    plt.ylabel("Frequency")
+
+    plt.tight_layout()
+    plt.show()
+
+print("\nCATEGORICAL DISTRIBUTIONS")
+print("=" * 80)
+
+for col in categorical_columns:
+
+    if col not in df.columns:
+        continue
+
+    if df[col].nunique(dropna=True) <= 15:
+
+        plt.figure(figsize=(9, 5))
+
+        order = df[col].value_counts().index
+
+        sns.countplot(
+            data=df,
+            x=col,
+            order=order
+        )
+
+        plt.title(
+            f"Distribution of {col}",
+            fontsize=15,
+            fontweight="bold"
+        )
+
+        plt.xlabel(col)
+        plt.ylabel("Count")
+
+        plt.xticks(rotation=30)
+
+        plt.tight_layout()
+        plt.show()
+
+print("\nTARGET VARIABLE ANALYSIS")
+print("=" * 80)
+
+plt.figure(figsize=(10, 6))
+
+sns.histplot(
+    df[target],
+    bins=25,
+    kde=True
+)
+
+plt.axvline(
+    df[target].mean(),
+    linestyle="--",
+    linewidth=2,
+    label=f"Mean = {df[target].mean():.2f}"
+)
+
+plt.axvline(
+    df[target].median(),
+    linestyle=":",
+    linewidth=2,
+    label=f"Median = {df[target].median():.2f}"
+)
+
+plt.title(
+    "Exam Score Distribution",
+    fontsize=16,
+    fontweight="bold"
+)
+
+plt.xlabel("Exam Score")
+plt.ylabel("Number of Students")
+
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+print(
+    f"Mean exam score: {df[target].mean():.2f}"
+)
+
+print(
+    f"Median exam score: {df[target].median():.2f}"
+)
+
+print(
+    f"Minimum exam score: {df[target].min():.2f}"
+)
+
+print(
+    f"Maximum exam score: {df[target].max():.2f}"
+)
+
+print("\nOUTLIER ANALYSIS")
+print("=" * 80)
+
+outlier_results = []
+
+for col in numeric_columns:
+
+    if col not in df.columns:
+        continue
+
+    data = df[col].dropna()
+
+    if len(data) < 5:
+        continue
+
+    q1 = data.quantile(0.25)
+    q3 = data.quantile(0.75)
+    iqr = q3 - q1
+
+    lower = q1 - 1.5 * iqr
+    upper = q3 + 1.5 * iqr
+
+    count = (
+        (data < lower) |
+        (data > upper)
+    ).sum()
+
+    outlier_results.append([
+        col,
+        q1,
+        q3,
+        iqr,
+        lower,
+        upper,
+        count,
+        count / len(data) * 100
+    ])
+
+outlier_df = pd.DataFrame(
+    outlier_results,
+    columns=[
+        "Variable",
+        "Q1",
+        "Q3",
+        "IQR",
+        "Lower_Bound",
+        "Upper_Bound",
+        "Outlier_Count",
+        "Outlier_Percentage"
+    ]
+)
+
+display(
+    outlier_df.sort_values(
+        "Outlier_Count",
+        ascending=False
+    )
+)
+
+print("\nBOX PLOTS")
+print("=" * 80)
+
+for col in numeric_columns:
+
+    if col not in df.columns:
+        continue
+
+    plt.figure(figsize=(9, 4))
+
+    sns.boxplot(
+        x=df[col]
+    )
+
+    plt.title(
+        f"Box Plot of {col}",
+        fontsize=15,
+        fontweight="bold"
+    )
+
+    plt.xlabel(col)
+
+    plt.tight_layout()
+    plt.show()
+
+print("\nCORRELATION ANALYSIS")
+print("=" * 80)
+
+numeric_for_corr = df.select_dtypes(
+    include=np.number
+)
+
+if numeric_for_corr.shape[1] >= 2:
+
+    correlation = numeric_for_corr.corr()
+
+    plt.figure(figsize=(13, 10))
+
+    sns.heatmap(
+        correlation,
+        annot=True,
+        fmt=".2f",
+        cmap="coolwarm",
+        center=0,
+        linewidths=0.5
+    )
+
+    plt.title(
+        "Correlation Heatmap",
+        fontsize=17,
+        fontweight="bold"
+    )
+
+    plt.tight_layout()
+    plt.show()
+
+    target_correlations = (
+        correlation[target]
+        .drop(target)
+        .sort_values(
+            key=lambda x: x.abs(),
+            ascending=False
+        )
+    )
+
+    print("\nVariables most strongly related to exam_score:")
+    display(
+        target_correlations.to_frame(
+            "Correlation_with_exam_score"
+        )
+    )
+
+print("\nNUMERICAL VARIABLES VS EXAM SCORE")
+print("=" * 80)
+
+for col in numeric_columns:
+
+    if col == target:
+        continue
+
+    if col not in df.columns:
+        continue
+
+    plt.figure(figsize=(9, 6))
+
+    sns.scatterplot(
+        data=df,
+        x=col,
+        y=target,
+        alpha=0.6
+    )
+
+    sns.regplot(
+        data=df,
+        x=col,
+        y=target,
+        scatter=False
+    )
+
+    plt.title(
+        f"{col} vs Exam Score",
+        fontsize=15,
+        fontweight="bold"
+    )
+
+    plt.xlabel(col)
+    plt.ylabel("Exam Score")
+
+    plt.tight_layout()
+    plt.show()
+
+print("\nCATEGORICAL VARIABLES VS EXAM SCORE")
+print("=" * 80)
+
+for col in categorical_columns:
+
+    if col not in df.columns:
+        continue
+
+    if df[col].nunique(dropna=True) <= 12:
+
+        plt.figure(figsize=(10, 6))
+
+        sns.boxplot(
+            data=df,
+            x=col,
+            y=target
+        )
+
+        plt.title(
+            f"{target} by {col}",
+            fontsize=15,
+            fontweight="bold"
+        )
+
+        plt.xlabel(col)
+        plt.ylabel("Exam Score")
+
+        plt.xticks(rotation=30)
+
+        plt.tight_layout()
+        plt.show()
+
+print("\nGROUP-WISE ANALYSIS")
+print("=" * 80)
+
+for col in categorical_columns:
+
+    if col not in df.columns:
+        continue
+
+    if df[col].nunique(dropna=True) <= 12:
+
+        group_result = (
+            df.groupby(col)[target]
+            .agg(
+                ["count", "mean", "median", "std"]
+            )
+            .sort_values(
+                "mean",
+                ascending=False
+            )
+        )
+
+        print(f"\n{col}")
+        display(group_result)
+
+print("\nFEATURE SELECTION")
+print("=" * 80)
+
+preferred_features = [
+    "study_hours_per_day",
+    "attendance_percentage",
+    "sleep_hours",
+    "social_media_hours",
+    "netflix_hours",
+    "exercise_frequency",
+    "mental_health_rating"
+]
+
+available_preferred = [
+    col for col in preferred_features
+    if col in df.columns
+]
+
+additional_numeric = [
+    col for col in numeric_columns
+    if col != target
+    and col not in available_preferred
+]
+
+additional_categorical = [
+    col for col in categorical_columns
+    if df[col].nunique(dropna=True) <= 15
+]
+
+features = (
+    available_preferred
+    + additional_numeric
+    + additional_categorical
+)
+
+features = list(
+    dict.fromkeys(features)
+)
+
+if len(features) == 0:
+    raise ValueError(
+        "No suitable features were found."
+    )
+
+print("Selected features:")
+print(features)
+
+X = df[features].copy()
+y = df[target].copy()
+
+numeric_features = X.select_dtypes(
+    include=np.number
+).columns.tolist()
+
+categorical_features = X.select_dtypes(
+    exclude=np.number
+).columns.tolist()
+
+print("\nNumeric features:")
+print(numeric_features)
+
+print("\nCategorical features:")
+print(categorical_features)
+
+numeric_transformer = Pipeline(
+    steps=[
+        (
+            "imputer",
+            SimpleImputer(strategy="median")
+        ),
+        (
+            "scaler",
+            StandardScaler()
+        )
+    ]
+)
+
+categorical_transformer = Pipeline(
+    steps=[
+        (
+            "imputer",
+            SimpleImputer(strategy="most_frequent")
+        ),
+        (
+            "encoder",
+            OneHotEncoder(
+                handle_unknown="ignore"
+            )
+        )
+    ]
+)
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        (
+            "numeric",
+            numeric_transformer,
+            numeric_features
+        ),
+        (
+            "categorical",
+            categorical_transformer,
+            categorical_features
+        )
+    ],
+    remainder="drop"
+)
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.20,
+    random_state=42
+)
+
+print("\nDATA SPLIT")
+print("=" * 80)
+
+print(
+    "Training samples:",
+    len(X_train)
+)
+
+print(
+    "Testing samples:",
+    len(X_test)
+)
+
+print("\n" + "=" * 80)
+print("LINEAR REGRESSION")
+print("=" * 80)
+
+linear_model = Pipeline(
+    steps=[
+        (
+            "preprocessor",
+            preprocessor
+        ),
+        (
+            "model",
+            LinearRegression()
+        )
+    ]
+)
+
+linear_model.fit(
+    X_train,
+    y_train
+)
+
+y_train_pred = linear_model.predict(
+    X_train
+)
+
+y_test_pred = linear_model.predict(
+    X_test
+)
+
+train_mae = mean_absolute_error(
+    y_train,
+    y_train_pred
+)
+
+test_mae = mean_absolute_error(
+    y_test,
+    y_test_pred
+)
+
+train_mse = mean_squared_error(
+    y_train,
+    y_train_pred
+)
+
+test_mse = mean_squared_error(
+    y_test,
+    y_test_pred
+)
+
+train_rmse = np.sqrt(
+    train_mse
+)
+
+test_rmse = np.sqrt(
+    test_mse
+)
+
+train_r2 = r2_score(
+    y_train,
+    y_train_pred
+)
+
+test_r2 = r2_score(
+    y_test,
+    y_test_pred
+)
+
+regression_results = pd.DataFrame({
+    "Metric": [
+        "MAE",
+        "MSE",
+        "RMSE",
+        "R² Score"
+    ],
+    "Training": [
+        train_mae,
+        train_mse,
+        train_rmse,
+        train_r2
+    ],
+    "Testing": [
+        test_mae,
+        test_mse,
+        test_rmse,
+        test_r2
+    ]
+})
+
+display(regression_results)
+
+print(
+    "\nInterpretation:"
+)
+
+print(
+    f"The Linear Regression model explains "
+    f"{test_r2 * 100:.2f}% of the variation in exam scores "
+    f"on the test dataset."
+)
+
+print(
+    f"The average absolute prediction error on the test set "
+    f"is approximately {test_mae:.2f} marks."
+)
+
+plt.figure(figsize=(9, 6))
+
+sns.scatterplot(
+    x=y_test,
+    y=y_test_pred,
+    alpha=0.7
+)
+
+minimum = min(
+    y_test.min(),
+    y_test_pred.min()
+)
+
+maximum = max(
+    y_test.max(),
+    y_test_pred.max()
+)
+
+plt.plot(
+    [minimum, maximum],
+    [minimum, maximum],
+    linestyle="--",
+    linewidth=2,
+    label="Perfect Prediction"
+)
+
+plt.title(
+    "Actual vs Predicted Exam Scores",
+    fontsize=16,
+    fontweight="bold"
+)
+
+plt.xlabel("Actual Exam Score")
+plt.ylabel("Predicted Exam Score")
+
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+residuals = y_test - y_test_pred
+
+plt.figure(figsize=(9, 6))
+
+sns.histplot(
+    residuals,
+    kde=True,
+    bins=25
+)
+
+plt.axvline(
+    0,
+    linestyle="--",
+    linewidth=2
+)
+
+plt.title(
+    "Distribution of Regression Residuals",
+    fontsize=16,
+    fontweight="bold"
+)
+
+plt.xlabel("Residual")
+plt.ylabel("Frequency")
+
+plt.tight_layout()
+plt.show()
+
+print("\n" + "=" * 80)
+print("PASS / FAIL CLASSIFICATION")
+print("=" * 80)
+
+df["pass_fail"] = np.where(
+    df[target] >= 50,
+    "Pass",
+    "Fail"
+)
+
+print(
+    df["pass_fail"].value_counts()
+)
+
+print(
+    df["pass_fail"]
+    .value_counts(normalize=True)
+    .mul(100)
+    .round(2)
+)
+
+plt.figure(figsize=(7, 5))
+
+sns.countplot(
+    data=df,
+    x="pass_fail",
+    order=["Fail", "Pass"]
+)
+
+plt.title(
+    "Pass vs Fail Distribution",
+    fontsize=16,
+    fontweight="bold"
+)
+
+plt.xlabel("Result")
+plt.ylabel("Number of Students")
+
+plt.tight_layout()
+plt.show()
+
+X_classification = df[features].copy()
+y_classification = df["pass_fail"].copy()
+
+X_train_c, X_test_c, y_train_c, y_test_c = train_test_split(
+    X_classification,
+    y_classification,
+    test_size=0.20,
+    random_state=42,
+    stratify=y_classification
+)
+
+classification_preprocessor = ColumnTransformer(
+    transformers=[
+        (
+            "numeric",
+            numeric_transformer,
+            numeric_features
+        ),
+        (
+            "categorical",
+            categorical_transformer,
+            categorical_features
+        )
+    ],
+    remainder="drop"
+)
+
+classification_model = Pipeline(
+    steps=[
+        (
+            "preprocessor",
+            classification_preprocessor
+        ),
+        (
+            "model",
+            LogisticRegression(
+                max_iter=2000
+            )
+        )
+    ]
+)
+
+classification_model.fit(
+    X_train_c,
+    y_train_c
+)
+
+y_train_class_pred = classification_model.predict(
+    X_train_c
+)
+
+y_test_class_pred = classification_model.predict(
+    X_test_c
+)
+
+train_accuracy = accuracy_score(
+    y_train_c,
+    y_train_class_pred
+)
+
+test_accuracy = accuracy_score(
+    y_test_c,
+    y_test_class_pred
+)
+
+train_precision = precision_score(
+    y_train_c,
+    y_train_class_pred,
+    pos_label="Pass",
+    zero_division=0
+)
+
+test_precision = precision_score(
+    y_test_c,
+    y_test_class_pred,
+    pos_label="Pass",
+    zero_division=0
+)
+
+train_recall = recall_score(
+    y_train_c,
+    y_train_class_pred,
+    pos_label="Pass",
+    zero_division=0
+)
+
+test_recall = recall_score(
+    y_test_c,
+    y_test_class_pred,
+    pos_label="Pass",
+    zero_division=0
+)
+
+train_f1 = f1_score(
+    y_train_c,
+    y_train_class_pred,
+    pos_label="Pass",
+    zero_division=0
+)
+
+test_f1 = f1_score(
+    y_test_c,
+    y_test_class_pred,
+    pos_label="Pass",
+    zero_division=0
+)
+
+classification_results = pd.DataFrame({
+    "Metric": [
+        "Accuracy",
+        "Precision",
+        "Recall",
+        "F1 Score"
+    ],
+    "Training": [
+        train_accuracy,
+        train_precision,
+        train_recall,
+        train_f1
+    ],
+    "Testing": [
+        test_accuracy,
+        test_precision,
+        test_recall,
+        test_f1
+    ]
+})
+
+display(
+    classification_results
+)
+
+print("\nCLASSIFICATION REPORT")
+print("=" * 80)
+
+print(
+    classification_report(
+        y_test_c,
+        y_test_class_pred,
+        zero_division=0
+    )
+)
+
+cm = confusion_matrix(
+    y_test_c,
+    y_test_class_pred,
+    labels=["Fail", "Pass"]
+)
+
+plt.figure(figsize=(7, 6))
+
+sns.heatmap(
+    cm,
+    annot=True,
+    fmt="d",
+    cmap="Blues",
+    xticklabels=["Fail", "Pass"],
+    yticklabels=["Fail", "Pass"]
+)
+
+plt.title(
+    "Confusion Matrix",
+    fontsize=16,
+    fontweight="bold"
+)
+
+plt.xlabel("Predicted")
+plt.ylabel("Actual")
+
+plt.tight_layout()
+plt.show()
+
+print("\nCONFUSION MATRIX INTERPRETATION")
+
+tn, fp, fn, tp = cm.ravel()
+
+print(
+    f"True Negatives: {tn}"
+)
+
+print(
+    f"False Positives: {fp}"
+)
+
+print(
+    f"False Negatives: {fn}"
+)
+
+print(
+    f"True Positives: {tp}"
+)
+
+print("\n" + "=" * 80)
+print("TRAINING VS TESTING PERFORMANCE")
+print("=" * 80)
+
+regression_gap = abs(
+    train_r2 - test_r2
+)
+
+classification_gap = abs(
+    train_accuracy - test_accuracy
+)
+
+print(
+    f"Regression Training R²: {train_r2:.4f}"
+)
+
+print(
+    f"Regression Testing R²: {test_r2:.4f}"
+)
+
+print(
+    f"Regression R² Gap: {regression_gap:.4f}"
+)
+
+print(
+    f"\nClassification Training Accuracy: "
+    f"{train_accuracy:.4f}"
+)
+
+print(
+    f"Classification Testing Accuracy: "
+    f"{test_accuracy:.4f}"
+)
+
+print(
+    f"Classification Accuracy Gap: "
+    f"{classification_gap:.4f}"
+)
+
+if (
+    regression_gap > 0.15
+    or classification_gap > 0.15
+):
+
+    model_fit_conclusion = (
+        "There are signs of possible overfitting because "
+        "training performance is substantially better than "
+        "testing performance."
+    )
+
+elif (
+    train_r2 < 0.40
+    and test_r2 < 0.40
+):
+
+    model_fit_conclusion = (
+        "The regression model may be underfitting because "
+        "both training and testing R² scores are relatively low."
+    )
+
+elif (
+    train_accuracy < 0.70
+    and test_accuracy < 0.70
+):
+
+    model_fit_conclusion = (
+        "The classification model may be underfitting because "
+        "both training and testing accuracy are relatively low."
+    )
+
+else:
+
+    model_fit_conclusion = (
+        "Training and testing performance are reasonably close, "
+        "so there is no strong evidence of severe overfitting."
+    )
+
+print(
+    "\nConclusion:",
+    model_fit_conclusion
+)
+
+print("\n" + "=" * 80)
+print("LINEAR REGRESSION COEFFICIENT ANALYSIS")
+print("=" * 80)
+
+try:
+
+    fitted_preprocessor = (
+        linear_model
+        .named_steps["preprocessor"]
+    )
+
+    fitted_regression = (
+        linear_model
+        .named_steps["model"]
+    )
+
+    feature_names = (
+        fitted_preprocessor
+        .get_feature_names_out()
+    )
+
+    coefficients = pd.DataFrame({
+        "Feature": feature_names,
+        "Coefficient": fitted_regression.coef_,
+        "Absolute_Importance": np.abs(
+            fitted_regression.coef_
+        )
+    })
+
+    coefficients = coefficients.sort_values(
+        "Absolute_Importance",
+        ascending=False
+    )
+
+    display(
+        coefficients.head(15)
+    )
+
+    plt.figure(figsize=(10, 7))
+
+    top_coefficients = (
+        coefficients
+        .head(15)
+        .sort_values("Coefficient")
+    )
+
+    sns.barplot(
+        data=top_coefficients,
+        x="Coefficient",
+        y="Feature"
+    )
+
+    plt.title(
+        "Most Influential Linear Regression Features",
+        fontsize=16,
+        fontweight="bold"
+    )
+
+    plt.xlabel("Regression Coefficient")
+    plt.ylabel("Feature")
+
+    plt.tight_layout()
+    plt.show()
+
+except Exception as e:
+
+    print(
+        "Coefficient analysis could not be displayed:",
+        e
+    )
+
+print("\n" + "=" * 80)
+print("MOST IMPORTANT EDA FINDINGS")
+print("=" * 80)
+
+if len(target_correlations) > 0:
+
+    strongest_positive = target_correlations.idxmax()
+    strongest_positive_value = target_correlations.max()
+
+    strongest_negative = target_correlations.idxmin()
+    strongest_negative_value = target_correlations.min()
+
+    print(
+        f"Strongest positive numerical relationship with exam score: "
+        f"{strongest_positive} "
+        f"({strongest_positive_value:.3f})"
+    )
+
+    print(
+        f"Strongest negative numerical relationship with exam score: "
+        f"{strongest_negative} "
+        f"({strongest_negative_value:.3f})"
+    )
+
+if "study_hours_per_day" in df.columns:
+
+    study_corr = df[
+        "study_hours_per_day"
+    ].corr(
+        df[target]
+    )
+
+    print(
+        f"Study hours vs exam score correlation: "
+        f"{study_corr:.3f}"
+    )
+
+if "attendance_percentage" in df.columns:
+
+    attendance_corr = df[
+        "attendance_percentage"
+    ].corr(
+        df[target]
+    )
+
+    print(
+        f"Attendance vs exam score correlation: "
+        f"{attendance_corr:.3f}"
+    )
+
+if "sleep_hours" in df.columns:
+
+    sleep_corr = df[
+        "sleep_hours"
+    ].corr(
+        df[target]
+    )
+
+    print(
+        f"Sleep hours vs exam score correlation: "
+        f"{sleep_corr:.3f}"
+    )
+
+print("\n" + "=" * 80)
+print("FIVE MEANINGFUL INSIGHTS")
+print("=" * 80)
+
+insights = []
+
+if len(target_correlations) > 0:
+
+    strongest = target_correlations.abs().idxmax()
+
+    strongest_value = target_correlations[
+        strongest
+    ]
+
+    direction = (
+        "positive"
+        if strongest_value > 0
+        else "negative"
+    )
+
+    insights.append(
+        f"{strongest} shows the strongest {direction} "
+        f"numerical relationship with exam score "
+        f"(correlation = {strongest_value:.2f})."
+    )
+
+if "study_hours_per_day" in df.columns:
+
+    value = df[
+        "study_hours_per_day"
+    ].corr(
+        df[target]
+    )
+
+    insights.append(
+        f"Study hours per day have a correlation of "
+        f"{value:.2f} with exam score, indicating the "
+        f"strength and direction of their linear relationship."
+    )
+
+if "attendance_percentage" in df.columns:
+
+    value = df[
+        "attendance_percentage"
+    ].corr(
+        df[target]
+    )
+
+    insights.append(
+        f"Attendance percentage has a correlation of "
+        f"{value:.2f} with exam score, making attendance "
+        f"an important variable to examine in relation to performance."
+    )
+
+pass_rate = (
+    df["pass_fail"]
+    .eq("Pass")
+    .mean()
+)
+
+insights.append(
+    f"{pass_rate:.1%} of students achieve a passing score "
+    f"of at least 50 marks, while {(1-pass_rate):.1%} fall below "
+    f"the passing threshold."
+)
+
+insights.append(
+    f"The Linear Regression model achieved a testing R² of "
+    f"{test_r2:.2f} with an RMSE of {test_rmse:.2f}, while the "
+    f"classification model achieved a testing accuracy of "
+    f"{test_accuracy:.2%} and F1-score of {test_f1:.2%}."
+)
+
+for i, insight in enumerate(
+    insights[:5],
+    1
+):
+    print(
+        f"{i}. {insight}"
+    )
+
+print("\n" + "=" * 80)
+print("EXECUTIVE CONCLUSION")
+print("=" * 80)
+
+print(
+    f"""
+The Student Performance dataset was analysed using a complete
+machine-learning workflow.
+
+The analysis began with exploratory data analysis covering dataset
+structure, numerical and categorical variables, missing values,
+duplicates, distributions, outliers, group-wise comparisons and
+correlations with exam_score.
+
+The numerical relationships helped identify variables that appear
+to be associated with academic performance. These relationships
+were then used to prepare the dataset for machine learning.
+
+A Linear Regression model was trained to predict exam_score.
+Performance was evaluated using MAE, MSE, RMSE and R².
+
+A second machine-learning task converted exam_score into Pass/Fail
+using 50 marks as the passing threshold. Logistic Regression was
+used as the classification model and evaluated using accuracy,
+precision, recall, F1-score and a confusion matrix.
+
+Training and testing results were compared to identify possible
+overfitting or underfitting.
+
+Overall, the analysis provides evidence about the student behaviours
+and characteristics most closely associated with academic
+performance and demonstrates how these variables can be used for
+both score prediction and pass/fail classification.
+"""
+)
+
+results = {
+    "Regression_Test_R2": test_r2,
+    "Regression_Test_RMSE": test_rmse,
+    "Regression_Test_MAE": test_mae,
+    "Classification_Test_Accuracy": test_accuracy,
+    "Classification_Test_Precision": test_precision,
+    "Classification_Test_Recall": test_recall,
+    "Classification_Test_F1": test_f1
+}
+
+results_df = pd.DataFrame(
+    results,
+    index=["Model Performance"]
+).T
+
+print("\nFINAL MODEL PERFORMANCE")
+display(results_df)
+
+df.to_csv(
+    "Student_Performance_Processed.csv",
+    index=False
+)
+
+print(
+    "\nProcessed dataset saved as "
+    "Student_Performance_Processed.csv"
+)
+
+print("\nCOMPLETE MACHINE LEARNING WORKFLOW FINISHED")
